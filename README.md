@@ -9,3 +9,17 @@ Our goal is to provide a space for Rust enthusiasts to come together, discuss th
 
 - [Visit CyprusRust](https://cyprusrust.org/)
 - [Join the Discord](https://discord.gg/3xKSyZM4mB)
+
+----------
+
+### Development
+
+Build with [Cobalt](https://cobalt-org.github.io/):
+```
+cobalt build -d docs
+```
+
+Develop with:
+```
+cobalt serve
+```

@@ -1,0 +1,9 @@
+
+site:
+  title: CyprusRust - Rust User Group in Cyprus
+  description: Rust User Group in Cyprus
+  base_url: https://cyprusrust.org
+posts:
+  rss: rss.xml
+  default:
+    permalink: /blog/{{slug}}

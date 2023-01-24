@@ -21,7 +21,7 @@ how it can help you build powerful, reliable applications.
 
 #### {{ post.title }}
 
-#### {{ post.description }}
+#### <small>{{ post.data.nice_date }}</small> <br> {{ post.description }}
 
 </hgroup>
 

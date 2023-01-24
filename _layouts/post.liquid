@@ -17,7 +17,21 @@
        </a>
     </header>
     <main class="container">
-      {{ page.content }}
+      <article>
+        {{ page.content }}
+
+        <footer>
+          <div class="grid">
+            <img class="round" src="{{ page.data.avatar }}" alt="{{ page.data.avatarAlt }}" />
+            <hgroup>
+              <h5>by {{ page.data.author }}</h5>
+              <p>{{ page.data.bio }}</p>
+              <br>
+              <a href="{{ page.data.contact }}">Get in touch</a>
+            </hgroup>
+          </div>
+        </footer>
+      </article>
     </main>
   </body>
 </html>

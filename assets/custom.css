@@ -64,6 +64,10 @@ h5 {
   --typography-spacing-vertical: 1.25rem;
 }
 
+.round {
+  border-radius: 9999px;
+}
+
 button,
 input[type=submit],
 input[type=reset],

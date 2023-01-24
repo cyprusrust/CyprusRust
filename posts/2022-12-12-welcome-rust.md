@@ -3,15 +3,23 @@ title: Welcome to CyprusRust
 description: Why we started this project and why you should join!
 slug: welcome-cyprusrust
 published_date: 2022-12-12 19:15:56 +0000
-layout: page.liquid
+layout: post.liquid
 is_draft: false
+data: {
+  nice_date: '12th December 2022, Paphos',
+  avatar: 'https://gravatar.com/avatar/21fc27a2ac6cd9094a423997f0344a0b?s=256',
+  avatarAlt: 'Federico Rampazzo looking like a smug insurance salesman',
+  author: 'Federico Rampazzo',
+  bio: 'Federico is a software engineer with a passion for Functional Programming, Category Theory and Strongly Typed languages.',
+  contact: 'https://framp.me',
+}
 ---
 
 <hgroup>
 
-### Welcome to CypruRust
+### {{ page.title }}
 
-#### 12th December 2022, Paphos
+#### {{ page.data.nice_date }}
 
 </hgroup>
 

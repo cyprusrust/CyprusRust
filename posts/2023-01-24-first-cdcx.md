@@ -11,7 +11,7 @@ data: {
   avatarAlt: 'Federico Rampazzo looking like a smug insurance salesman',
   author: 'Federico Rampazzo',
   bio: 'Federico is a software engineer with a passion for Functional Programming, Category Theory and Strongly Typed languages.',
-  contact: 'https://framp.me',
+  contact: 'https://apiplant.com',
 }
 ---
 

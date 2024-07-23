@@ -1,14 +1,14 @@
 ---
-title: Generative AI in Rust at Software Freedom Day!
-description: Federico talked about Rust and AI at the Software Freedom Day
+title: AI in Rust and the Burn framework!
+description: Federico talked about influential AI projects in Rust
 slug: software-freedom-day
-published_date: 2023-10-01 02:01:48 +0000
+published_date: 2024-07-20 16:01:48 +0000
 layout: post.liquid
 is_draft: false
 data: {
-  nice_date: '1st October 2023, Paphos',
+  nice_date: '20th July 2024, Paphos',
   avatar: 'https://gravatar.com/avatar/21fc27a2ac6cd9094a423997f0344a0b?s=256',
-  avatarAlt: 'Federico Rampazzo looking like a smug insurance salesman',
+  avatarAlt: 'Federico Rampazzo looking like an Indiana Jones impersonator',
   author: 'Federico Rampazzo',
   bio: 'Federico is a software engineer with a passion for Functional Programming, Category Theory and Strongly Typed languages.',
   contact: 'https://apiplant.com',
@@ -25,7 +25,7 @@ data: {
 
 &nbsp;
 
-Last weekend your favourite people at the [CDC](https://cdc.cy) organised a conference for [Software Freedom Day](https://wiki.softwarefreedomday.org/2023/Cyprus/Paphos/CDC). We beat all our affluence records and we had 3 great talks discussing Open Source.
+Last week we had the pleasure to partecipate [Software Freedom Day](https://wiki.softwarefreedomday.org/2023/Cyprus/Paphos/CDC). We beat all our affluence records and we had 3 great talks discussing Open Source.
 
 Of course, I came up with a creative idea to include Rust in the discussion and prepared [a talk](https://cyprusrust.github.io/generative-ai-slides) about my experience using AI and trying to avoid Python.
 

@@ -8,7 +8,7 @@ is_draft: false
 data: {
   nice_date: '23th January 2023, Paphos',
   avatar: 'https://gravatar.com/avatar/21fc27a2ac6cd9094a423997f0344a0b?s=256',
-  avatarAlt: 'Federico Rampazzo looking like a smug insurance salesman',
+  avatarAlt: 'Federico Rampazzo looking like like an Indiana Jones impersonator',
   author: 'Federico Rampazzo',
   bio: 'Federico is a software engineer with a passion for Functional Programming, Category Theory and Strongly Typed languages.',
   contact: 'https://apiplant.com',

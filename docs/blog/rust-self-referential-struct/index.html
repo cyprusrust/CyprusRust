@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/assets/pico.min.css">
+    <link rel="stylesheet" href="/assets/custom.css">
+    <title>CyprusRust - Self-referential structs in Rust</title>
+  </head>
+  <body>
+    <header>
+       <a href="/">
+         <hgroup>
+           <h1>CyprusRust</h1>
+           <h2>Rust User Group in Cyprus</h2>
+         </hgroup>
+       </a>
+    </header>
+    <main class="container">
+      <article>
+        <hgroup>
+<h3>Self-referential structs in Rust</h3>
+<h4>31st May 2025, Paphos</h4>
+</hgroup>
+<p> </p>
+<p>In Rust, there are a few paradigms that are more difficult to implement than in most other languages.
+Today, we'll look at one of those: the self-referential structs.</p>
+<p>A self-referential struct contains a field that borrows from another field of the same struct.</p>
+<p>First of all, let's start with a simple example of why we might want to use this kind of pattern.</p>
+<p>Let's imagine we want to write a csv parser, but we want to avoid extra memory allocation. One way to do that could be to return pointers
+to the parsed fields, like so:</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">std::io::{</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, BufRead};
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">CsvRecord&lt;</span><span style="color:#b48ead;">&#39;a</span><span style="color:#c0c5ce;">&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">line</span><span style="color:#c0c5ce;">: String,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">fields</span><span style="color:#c0c5ce;">: Vec&lt;&amp;</span><span style="color:#b48ead;">&#39;a str</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">load_record</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">line</span><span style="color:#c0c5ce;">: String) -&gt; CsvRecord&lt;&#39;_&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> record = CsvRecord {
+</span><span style="color:#c0c5ce;">        line,
+</span><span style="color:#c0c5ce;">        fields: Vec::new(),
+</span><span style="color:#c0c5ce;">    };
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    record.fields = record.line.</span><span style="color:#96b5b4;">split</span><span style="color:#c0c5ce;">(&#39;</span><span style="color:#a3be8c;">,</span><span style="color:#c0c5ce;">&#39;).</span><span style="color:#96b5b4;">collect</span><span style="color:#c0c5ce;">();
+</span><span style="color:#c0c5ce;">    record
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">main</span><span style="color:#c0c5ce;">() -&gt; io::Result&lt;()&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> stdin = io::stdin();
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">for</span><span style="color:#c0c5ce;"> line in stdin.</span><span style="color:#96b5b4;">lock</span><span style="color:#c0c5ce;">().</span><span style="color:#96b5b4;">lines</span><span style="color:#c0c5ce;">() {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> record = </span><span style="color:#96b5b4;">load_record</span><span style="color:#c0c5ce;">(line?);
+</span><span style="color:#c0c5ce;">        println!(&quot;</span><span style="color:#d08770;">{} {:?}</span><span style="color:#c0c5ce;">&quot;, record.line, record.fields);
+</span><span style="color:#c0c5ce;">    }
+</span><span style="color:#c0c5ce;">    Ok(())
+</span><span style="color:#c0c5ce;">}
+</span></code></pre>
+<p>This example will actually not compile.
+There are multiple issues with this code, we will explore them one by one, to dig deeper into self-referential data structures, but first, let's consider
+that there are easier solutions to solve this in such a simple case, so let's get them out of the way:</p>
+<ul>
+<li>Store the owned data outside the struct and let the struct hold only references. If we don't put the data and the references to it in the same data structure, we could have the caller owned data live longer than the references to it.</li>
+<li>Store ranges rather than pointers. In this simple case, we could store the ranges of each one of the csv fields (ie: <code>fields: [(0..2), (4..5)]</code>) and avoid the references altogether</li>
+</ul>
+<p>Those two straightforward approaches should be considered first, but this is not always possible.
+So let's first explore what's so hard about these data structures, and that will bring us to other possible solutions that will be more flexible and accommodate for more complex real-life scenarios.</p>
+<h3>Rust doesn't notify when a value's memory address changes</h3>
+<p>In Rust, the compiler is always allowed to move values to new memory addresses and doesn't notify that the address has changed.
+Moving ownership might also change the memory address, like in this simple example:</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">Foo(String);
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">main</span><span style="color:#c0c5ce;">() {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> foo = Foo(&quot;</span><span style="color:#a3be8c;">foo</span><span style="color:#c0c5ce;">&quot;.</span><span style="color:#96b5b4;">to_string</span><span style="color:#c0c5ce;">());
+</span><span style="color:#c0c5ce;">    println!(&quot;</span><span style="color:#a3be8c;">ptr1 = </span><span style="color:#d08770;">{:p}</span><span style="color:#c0c5ce;">&quot;, &amp;foo);
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> bar = foo;
+</span><span style="color:#c0c5ce;">    println!(&quot;</span><span style="color:#a3be8c;">ptr2 = </span><span style="color:#d08770;">{:p}</span><span style="color:#c0c5ce;">&quot;, &amp;bar);
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span></code></pre>
+<p>When you run this code, you will notice that the moving of <code>foo</code> into <code>bar</code>, will move the struct address, so the two printed addresses will be different.
+Any pointers to the previous memory address will be pointing to an invalid address, but luckily safe Rust prevents this:
+Moving the value will make any references to the old one invalid.</p>
+<p>Heap allocations are stable between reassignment and function calls, and a simple move will not change the memory address. This will print the same address:</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">Foo(String);
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">main</span><span style="color:#c0c5ce;">() {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> foo = Foo(&quot;</span><span style="color:#a3be8c;">foo</span><span style="color:#c0c5ce;">&quot;.</span><span style="color:#96b5b4;">to_string</span><span style="color:#c0c5ce;">());
+</span><span style="color:#c0c5ce;">    println!(&quot;</span><span style="color:#a3be8c;">ptr1 = </span><span style="color:#d08770;">{:p}</span><span style="color:#c0c5ce;">&quot;, foo.</span><span style="color:#d08770;">0.</span><span style="color:#96b5b4;">as_ptr</span><span style="color:#c0c5ce;">());
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> bar = foo;
+</span><span style="color:#c0c5ce;">    println!(&quot;</span><span style="color:#a3be8c;">ptr2 = </span><span style="color:#d08770;">{:p}</span><span style="color:#c0c5ce;">&quot;, bar.</span><span style="color:#d08770;">0.</span><span style="color:#96b5b4;">as_ptr</span><span style="color:#c0c5ce;">());
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span></code></pre>
+<p>So we could in theory have a stable pointer to the heap content, but still, this won't prevent safe functions from moving the address, like <code>mem::replace</code>, and that will break all the references pointing to it (and again, we need to use unsafe Rust to make this possible)</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">std::ptr::NonNull;
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">Ref {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">data</span><span style="color:#c0c5ce;">: String,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">ptr</span><span style="color:#c0c5ce;">: NonNull&lt;</span><span style="color:#b48ead;">u8</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">main</span><span style="color:#c0c5ce;">() {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> data = String::from(&quot;</span><span style="color:#a3be8c;">foo</span><span style="color:#c0c5ce;">&quot;);
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> boxed = Box::new(Ref {
+</span><span style="color:#c0c5ce;">        data,
+</span><span style="color:#c0c5ce;">        ptr: NonNull::dangling(),
+</span><span style="color:#c0c5ce;">    });
+</span><span style="color:#c0c5ce;">    boxed.ptr = NonNull::new(boxed.data.</span><span style="color:#96b5b4;">as_ptr</span><span style="color:#c0c5ce;">() as *</span><span style="color:#b48ead;">mut u8</span><span style="color:#c0c5ce;">).</span><span style="color:#96b5b4;">unwrap</span><span style="color:#c0c5ce;">();
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">unsafe </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">        println!(
+</span><span style="color:#c0c5ce;">            &quot;</span><span style="color:#a3be8c;">second byte ptr  : </span><span style="color:#d08770;">{:p}</span><span style="color:#a3be8c;">  value: </span><span style="color:#d08770;">{}</span><span style="color:#c0c5ce;">&quot;,
+</span><span style="color:#c0c5ce;">            boxed.ptr,
+</span><span style="color:#c0c5ce;">            *boxed.ptr.</span><span style="color:#96b5b4;">as_ptr</span><span style="color:#c0c5ce;">()
+</span><span style="color:#c0c5ce;">        );
+</span><span style="color:#c0c5ce;">    }
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let </span><span style="color:#c0c5ce;">_ = std::mem::replace(&amp;</span><span style="color:#b48ead;">mut</span><span style="color:#c0c5ce;"> boxed.data, String::from(&quot;</span><span style="color:#a3be8c;">foo</span><span style="color:#c0c5ce;">&quot;));
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">unsafe </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">        println!(
+</span><span style="color:#c0c5ce;">            &quot;</span><span style="color:#a3be8c;">second byte ptr  : </span><span style="color:#d08770;">{:p}</span><span style="color:#a3be8c;">  value: </span><span style="color:#d08770;">{}</span><span style="color:#c0c5ce;">&quot;,
+</span><span style="color:#c0c5ce;">            boxed.ptr,
+</span><span style="color:#c0c5ce;">            *boxed.ptr.</span><span style="color:#96b5b4;">as_ptr</span><span style="color:#c0c5ce;">()
+</span><span style="color:#c0c5ce;">        );
+</span><span style="color:#c0c5ce;">    }
+</span><span style="color:#c0c5ce;">}
+</span></code></pre>
+<p>In the above example, we are replacing the <code>String</code> inside the box with another one.
+The original string is dropped, and the pointer is then dangling and pointing to freed memory.
+We had to use unsafe to access this dangling pointer, as we cannot trust the memory address to be stable,
+and we want safeguards from the compiler, rather than relying on our ability to track and spot possible issues manually.</p>
+<p>For this, Rust provides pinning functionality.
+<code>std::pin::Pin</code> is a wrapper in Rust's standard library, that ensures that the memory address of a variable won't move.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> boxed = Box::pin(Ref {
+</span><span style="color:#c0c5ce;">    data: &quot;</span><span style="color:#a3be8c;">foo</span><span style="color:#c0c5ce;">&quot;.</span><span style="color:#96b5b4;">to_owned</span><span style="color:#c0c5ce;">(),
+</span><span style="color:#c0c5ce;">    ptr: NonNull::dangling(),
+</span><span style="color:#c0c5ce;">   _pin: PhantomPinned,
+</span><span style="color:#c0c5ce;">});
+</span></code></pre>
+<p>This will not only ensure that the compiler will prevent automatic moving of data like the ownership change, but also prevent user operations like <code>mem::replace</code> to ensure the stability of the address.</p>
+<p>As you might have noticed, not only we are using <code>Box::pin</code> to wrap our struct, but we also added a new field containing a <code>PhantomPinned</code> marker.
+When a struct is marked with <code>PhantomPinned</code>, the Rust compiler opts out of the auto trait <code>Unpin</code>, a trait that allows unpinning of the data from the compiler when necessary. This means that the memory might become movable again, and this would break our example.</p>
+<p>The reason why there is automatic unpinning of the data is that it alleviates the reduced ergonomics of APIs that require the use of <code>Pin</code> for soundness for some types, but which also want to be used by other types that don’t care about pinning. So here we're saying: we don't want to move this data again.</p>
+<h3>Unexpressible lifetimes</h3>
+<p>The other issue with self-referential data structures is that there is no way to express the lifetime of a reference tied to the lifetime of a struct.
+So we need to use unsafe and manually ensure that references are still valid.
+For example in this struct, this reference could have a longer lifetime than the data it references:</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">CsvRecord&lt;</span><span style="color:#b48ead;">&#39;a</span><span style="color:#c0c5ce;">&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">line</span><span style="color:#c0c5ce;">: String,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">fields</span><span style="color:#c0c5ce;">: Vec&lt;&amp;</span><span style="color:#b48ead;">&#39;a str</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">}
+</span></code></pre>
+<p>A solution could be to have in the language a lifetime that represents the lifetime of the struct itself, which currently doesn't exist in Rust, but it could work like so:</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">CsvRecord {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">line</span><span style="color:#c0c5ce;">: String,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">fields</span><span style="color:#c0c5ce;">: Vec&lt;&amp;</span><span style="color:#b48ead;">&#39;self str</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">}
+</span></code></pre>
+<p>(not valid Rust syntax—just illustrative)</p>
+<p>This way, we always know that the lifetime of the reference won't outlive <code>line</code>.
+So if such a lifetime existed, and by pinning our data, self-referential data structures would be possible. For now, given this requires a whole lot of unsafe code and manual checks, let's explore some libraries that will do that for us and provide a safer alternative. We're gonna explore two possible solutions: Arenas &amp; Ouroboros.</p>
+<h3>Arenas</h3>
+<p>Arenas are used to allocate a bigger block of memory altogether, that can be used to contain smaller objects. Then we can deallocate the arena all at once.
+This has a great benefit in that all the allocated objects will share the same lifetime, so it's a great fit for our use case.
+One of the crates that offers this functionality is <code>bumpalo</code></p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">bumpalo::{
+</span><span style="color:#c0c5ce;">    Bump,
+</span><span style="color:#c0c5ce;">    collections::{CollectIn, Vec as BVec},
+</span><span style="color:#c0c5ce;">};
+</span><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">std::io::{</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, BufRead};
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">CsvRecord&lt;</span><span style="color:#b48ead;">&#39;a</span><span style="color:#c0c5ce;">&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">line</span><span style="color:#c0c5ce;">: &amp;</span><span style="color:#b48ead;">&#39;a str</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">fields</span><span style="color:#c0c5ce;">: BVec&lt;</span><span style="color:#b48ead;">&#39;a</span><span style="color:#c0c5ce;">, &amp;</span><span style="color:#b48ead;">&#39;a str</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">load_record</span><span style="color:#c0c5ce;">&lt;</span><span style="color:#b48ead;">&#39;a</span><span style="color:#c0c5ce;">&gt;(</span><span style="color:#bf616a;">arena</span><span style="color:#c0c5ce;">: &amp;</span><span style="color:#b48ead;">&#39;a</span><span style="color:#c0c5ce;"> Bump, </span><span style="color:#bf616a;">line</span><span style="color:#c0c5ce;">: String) -&gt; CsvRecord&lt;</span><span style="color:#b48ead;">&#39;a</span><span style="color:#c0c5ce;">&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> record = CsvRecord {
+</span><span style="color:#c0c5ce;">        line: arena.</span><span style="color:#96b5b4;">alloc</span><span style="color:#c0c5ce;">(line),
+</span><span style="color:#c0c5ce;">        fields: BVec::new_in(arena),
+</span><span style="color:#c0c5ce;">    };
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    record.fields = record.line.</span><span style="color:#96b5b4;">split</span><span style="color:#c0c5ce;">(&#39;</span><span style="color:#a3be8c;">,</span><span style="color:#c0c5ce;">&#39;).</span><span style="color:#96b5b4;">collect_in</span><span style="color:#c0c5ce;">(arena);
+</span><span style="color:#c0c5ce;">    record
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">main</span><span style="color:#c0c5ce;">() -&gt; io::Result&lt;()&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> stdin = io::stdin();
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> arena = Bump::new();
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">for</span><span style="color:#c0c5ce;"> line in stdin.</span><span style="color:#96b5b4;">lock</span><span style="color:#c0c5ce;">().</span><span style="color:#96b5b4;">lines</span><span style="color:#c0c5ce;">() {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> record = </span><span style="color:#96b5b4;">load_record</span><span style="color:#c0c5ce;">(&amp;arena, line?);
+</span><span style="color:#c0c5ce;">        println!(&quot;</span><span style="color:#d08770;">{} {:?}</span><span style="color:#c0c5ce;">&quot;, record.line, record.fields);
+</span><span style="color:#c0c5ce;">    }
+</span><span style="color:#c0c5ce;">    Ok(())
+</span><span style="color:#c0c5ce;">}
+</span></code></pre>
+<p>This is replicating the initial example. Now the string is copied and allocated into the arena with <code>arena.alloc</code>, the <code>CsvRecord</code> itself as well thanks to <code>arena.alloc</code>, and we can now store a pointer to the fields in the line as everything lives in the arena.</p>
+<h3>Ouroboros</h3>
+<p>This is another interesting approach, that is much more specific to self-referential structs. It contains some macros that will provide some safer methods to interact with those structs, without having to use unsafe. Here is what the previous example would look like in ouroboros.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">ouroboros::self_referencing;
+</span><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">std::io::{</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, BufRead};
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">self_referencing</span><span style="color:#c0c5ce;">]
+</span><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">CsvRecord {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">line</span><span style="color:#c0c5ce;">: String,
+</span><span style="color:#c0c5ce;">    #[borrows(line)]
+</span><span style="color:#c0c5ce;">    #[covariant]
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">fields</span><span style="color:#c0c5ce;">: Vec&lt;&amp;</span><span style="color:#b48ead;">&#39;this str</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">load_record</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">line</span><span style="color:#c0c5ce;">: String) -&gt; CsvRecord {
+</span><span style="color:#c0c5ce;">    CsvRecordBuilder {
+</span><span style="color:#c0c5ce;">        line,
+</span><span style="color:#c0c5ce;">        fields_builder: |</span><span style="color:#bf616a;">line</span><span style="color:#c0c5ce;">: &amp;String| line.</span><span style="color:#96b5b4;">split</span><span style="color:#c0c5ce;">(&#39;</span><span style="color:#a3be8c;">,</span><span style="color:#c0c5ce;">&#39;).</span><span style="color:#96b5b4;">collect</span><span style="color:#c0c5ce;">(),
+</span><span style="color:#c0c5ce;">    }
+</span><span style="color:#c0c5ce;">    .</span><span style="color:#96b5b4;">build</span><span style="color:#c0c5ce;">()
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">main</span><span style="color:#c0c5ce;">() -&gt; io::Result&lt;()&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> stdin = io::stdin();
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">for</span><span style="color:#c0c5ce;"> line in stdin.</span><span style="color:#96b5b4;">lock</span><span style="color:#c0c5ce;">().</span><span style="color:#96b5b4;">lines</span><span style="color:#c0c5ce;">() {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> record = </span><span style="color:#96b5b4;">load_record</span><span style="color:#c0c5ce;">(line?);
+</span><span style="color:#c0c5ce;">        println!(&quot;</span><span style="color:#d08770;">{} {:?}</span><span style="color:#c0c5ce;">&quot;, record.</span><span style="color:#96b5b4;">borrow_line</span><span style="color:#c0c5ce;">(), record.</span><span style="color:#96b5b4;">borrow_fields</span><span style="color:#c0c5ce;">());
+</span><span style="color:#c0c5ce;">    }
+</span><span style="color:#c0c5ce;">    Ok(())
+</span><span style="color:#c0c5ce;">}
+</span></code></pre>
+<p>The attribute macro <code>self_referencing</code> will create a new struct called <code>&lt;YourStructName&gt;Builder</code> that will build the self-referential type. You must mark which fields are borrowing what, thanks to the attribute macro <code>borrows</code>. For those fields, you can now use a <code>'this</code> lifetime that is tied to the lifetime of the structure itself.</p>
+<p>Then to create the actual self-referential type, you have to call structure builder, and for the borrowed fields you pass in a closure for <code>field_name_builder</code> that will take a reference to the borrowed data and return the borrowed values. Then you can build the struct (and the builder structs provide a bunch of other methods that you can check out in the <a href="https://docs.rs/ouroboros/latest/ouroboros/attr.self_referencing.html#mystructbuilder">docs</a>).</p>
+<p>One last remark is that <code>fields</code> are marked a <code>covariant</code> via an attribute macro.
+Covariance means that we can use types with <code>'a</code> lifetime where <code>'a</code> is living at least as long as <code>'this</code>, as opposed to <code>not_covariant</code> where we could only use exact types with a <code>'this</code> lifetime. This is a property of the type itself, and in this specific example <code>Vec&lt;T&gt;</code> is covariant in <code>T</code> because it only hands out shared references to the elements.</p>
+<p>This is necessary because it is not possible to determine the variance of a type inside macros. So we manually mark the type as <code>covariant</code> or <code>not_covariant</code> with the relative attribute macro. The macro will then generate or skip the <code>.borrow_*()</code> methods accordingly.</p>
+<p>This will not impact the soundness of the code, as if you mark the type incorrectly, it will just not compile.</p>
+<h3>Outro</h3>
+<p>In the end, true self-referential structs in Rust take a bit more work: either you park all your data in a shared arena so every slice stays valid, or you lean on a macro like ouroboros to pin and wire up those internal pointers for you.</p>
+<p>Arenas give you one big, stable home for all your strings and their views, while ouroboros generates a builder that safely ties each field back to its owner.</p>
+<p>With either pattern, you get efficient, zero-copy access without writing unsafe code yourself, just choose the approach that best fits your needs.</p>
+
+
+        <footer>
+          <div class="grid">
+            <img class="round" src="https://gravatar.com/avatar/90ab307819ea66a7bbebe23cab35288b?size=256" alt="Federico Blancato" />
+            <hgroup>
+              <h5>by Federico Blancato</h5>
+              <p>I build things</p>
+              <br>
+              <a href="https://www.linkedin.com/in/federico-blancato-86139a84/">Get in touch</a>
+            </hgroup>
+          </div>
+        </footer>
+      </article>
+    </main>
+  </body>
+</html>

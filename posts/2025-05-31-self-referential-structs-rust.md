@@ -4,7 +4,6 @@ description: Exploration of self-referential structs, Pin, Arenas and Ouroboros
 slug: rust-self-referential-struct
 published_date: 2025-05-31 16:01:48 +0000
 layout: post.liquid
-is_draft: true
 data: {
   nice_date: '31st May 2025, Paphos',
   avatar: 'https://gravatar.com/avatar/90ab307819ea66a7bbebe23cab35288b?size=256',

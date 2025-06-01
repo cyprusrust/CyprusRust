@@ -147,8 +147,9 @@ The original string is dropped, and the pointer is then dangling and pointing to
 We had to use unsafe to access this dangling pointer, as we cannot trust the memory address to be stable,
 and we want safeguards from the compiler, rather than relying on our ability to track and spot possible issues manually.
 
-For this, Rust provides pinning functionality.
-`std::pin::Pin` is a wrapper in Rust's standard library, that ensures that the memory address of a variable won't move.
+This can be achieved via pinning with `std::pin::Pin`.
+`std::pin::Pin` is a wrapper in Rust's standard library that guarantees that the value inside the `Pin` will not be moved.
+When a value is pinned, with some caveats that we're gonna discuss shortly, you won't be able to get a mutable reference to the wrapped value, making it impossible to change the underlying memory.
 
 ```rust
 let mut boxed = Box::pin(Ref {
@@ -158,12 +159,18 @@ let mut boxed = Box::pin(Ref {
 });
 ```
 
-This will not only ensure that the compiler will prevent automatic moving of data like the ownership change, but also prevent user operations like `mem::replace` to ensure the stability of the address.
+This will not only ensure that the compiler will prevent automatic moving of data like the ownership change, but also prevent user operations like `mem::replace`.
 
-As you might have noticed, not only we are using `Box::pin` to wrap our struct, but we also added a new field containing a `PhantomPinned` marker.
-When a struct is marked with `PhantomPinned`, the Rust compiler opts out of the auto trait `Unpin`, a trait that allows unpinning of the data from the compiler when necessary. This means that the memory might become movable again, and this would break our example.
+As you might have noticed, not only are we using `Box::pin` to wrap our struct, but we also added a new field containing a `PhantomPinned` marker.
 
-The reason why there is automatic unpinning of the data is that it alleviates the reduced ergonomics of APIs that require the use of `Pin` for soundness for some types, but which also want to be used by other types that don’t care about pinning. So here we're saying: we don't want to move this data again.
+This is due to an auto trait called `Unpin`. Auto traits are traits that are implemented for all the types unless explicitly opted out.
+If a type implements `Unpin` you will be able to use operations like `mem::replace` on it even if the type is pinned.
+
+The reason for having all the types be automatically `Unpin` is to alleviate the reduced ergonomics of APIs that require the use of `Pin` for soundness for some types, but which also want to be used by other types that don’t care about pinning.
+This way from the user perspective, those types will behave as if they were not pinned in the first place.
+
+That's not what we want for the example above, so we're opting out of `Unpin` by adding the `_pin: PhantomPinned` marker trait.
+Every type with this marker trait will not implement `Unpin` by default.
 
 ### Unexpressible lifetimes
 

@@ -239,7 +239,8 @@ fn main() -> io::Result<()> {
 }
 ```
 
-This is replicating the initial example. Now the string is copied and allocated into the arena with `arena.alloc`, the `CsvRecord` itself as well thanks to `arena.alloc`, and we can now store a pointer to the fields in the line as everything lives in the arena.
+This is replicating the initial example. Now the string is allocated into the arena with `arena.alloc` and all the references collected in the arena as well.
+Given than both now are in the arena, there are no lifetime issues.
 
 ### Ouroboros
 
